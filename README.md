@@ -14,12 +14,13 @@ The GA014s is a 485-bus gateway that exposes Midea MDV central AC units over a l
 
 ## Installation
 
-### Via HACS
+### Via HACS (custom repository)
 
-1. Add this repository as a custom repository in HACS (category: Integration)
-2. Install "Midea GA014s Gateway"
-3. Restart Home Assistant
-4. Go to **Settings → Devices & Services → Add Integration** → search "GA014s"
+1. In Home Assistant, go to **HACS → Integrations → ⋮ → Custom repositories**
+2. Add `https://github.com/g199209/midea_GA014s` with category **Integration**
+3. In HACS, find "Midea GA014s Gateway" and click **Download**
+4. Restart Home Assistant
+5. Go to **Settings → Devices & Services → Add Integration** → search "GA014s"
 
 ### Manual
 
