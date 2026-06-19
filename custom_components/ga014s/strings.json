@@ -1,0 +1,19 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Midea GA014s Gateway",
+        "description": "Enter the IP address of your GA014s gateway.",
+        "data": {
+          "host": "Host"
+        }
+      }
+    },
+    "error": {
+      "cannot_connect": "Cannot connect to the gateway. Check the IP address."
+    },
+    "abort": {
+      "already_configured": "This gateway is already configured."
+    }
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "domain": "ga014s",
+  "name": "Midea GA014s Gateway",
+  "codeowners": ["@g199209"],
+  "config_flow": true,
+  "documentation": "https://github.com/g199209/midea_GA014s",
+  "iot_class": "local_polling",
+  "issue_tracker": "https://github.com/g199209/midea_GA014s/issues",
+  "requirements": ["aiohttp"],
+  "version": "1.0.0"
+}
