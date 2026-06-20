@@ -1,3 +1,4 @@
+"""Data update coordinator for the GA014s gateway."""
 from __future__ import annotations
 
 import logging
@@ -17,6 +18,7 @@ class GA014sCoordinator(DataUpdateCoordinator):
     """Polls the GA014s gateway and exposes combined AC data."""
 
     def __init__(self, hass: HomeAssistant, client: GA014sApiClient) -> None:
+        """Initialize the coordinator."""
         super().__init__(
             hass,
             _LOGGER,
@@ -26,6 +28,7 @@ class GA014sCoordinator(DataUpdateCoordinator):
         self._client = client
 
     async def _async_update_data(self) -> dict[int, dict[str, Any]]:
+        """Fetch data from the gateway and merge room names with AC status."""
         try:
             rooms = await self._client.get_room_list()
             units = await self._client.get_ac_list()

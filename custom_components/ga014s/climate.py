@@ -1,3 +1,4 @@
+"""Climate platform for the GA014s integration."""
 from __future__ import annotations
 
 import logging
@@ -23,7 +24,6 @@ from .const import (
     PRESET_MODES,
     PRESET_NONE,
     SWING_MODE_MAP,
-    SWING_MODE_REVERSE,
 )
 from .coordinator import GA014sCoordinator
 
@@ -33,6 +33,7 @@ _LOGGER = logging.getLogger(f"custom_components.{DOMAIN}")
 async def async_setup_entry(
     hass: HomeAssistant, entry: ConfigEntry, async_add_entities: AddEntitiesCallback
 ) -> None:
+    """Set up GA014s climate entities from a config entry."""
     coordinator: GA014sCoordinator = hass.data[DOMAIN][entry.entry_id]
     entities = []
     for addr, unit in coordinator.data.items():
@@ -43,6 +44,8 @@ async def async_setup_entry(
 
 
 class GA014sClimateEntity(CoordinatorEntity[GA014sCoordinator], ClimateEntity):
+    """Climate entity for a single GA014s AC indoor unit."""
+
     _attr_temperature_unit = UnitOfTemperature.CELSIUS
     _attr_min_temp = MIN_TEMP
     _attr_max_temp = MAX_TEMP
@@ -60,6 +63,7 @@ class GA014sClimateEntity(CoordinatorEntity[GA014sCoordinator], ClimateEntity):
     )
 
     def __init__(self, coordinator: GA014sCoordinator, addr: int) -> None:
+        """Initialize the climate entity."""
         super().__init__(coordinator)
         self._addr = addr
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{addr}"
@@ -79,6 +83,7 @@ class GA014sClimateEntity(CoordinatorEntity[GA014sCoordinator], ClimateEntity):
         self._update_from_data(unit)
 
     def _update_from_data(self, unit: dict[str, Any]) -> None:
+        """Update entity attributes from coordinator data."""
         if not unit:
             return
         self._attr_name = unit.get("name", self._attr_name)
@@ -127,6 +132,7 @@ class GA014sClimateEntity(CoordinatorEntity[GA014sCoordinator], ClimateEntity):
 
     @callback
     def _handle_coordinator_update(self) -> None:
+        """Handle updated data from the coordinator."""
         unit = self.coordinator.data.get(self._addr)
         if unit is None:
             return
@@ -135,6 +141,7 @@ class GA014sClimateEntity(CoordinatorEntity[GA014sCoordinator], ClimateEntity):
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
+        """Return extra state attributes."""
         unit = self.coordinator.data.get(self._addr, {})
         return {
             "addr": self._addr,
@@ -145,6 +152,7 @@ class GA014sClimateEntity(CoordinatorEntity[GA014sCoordinator], ClimateEntity):
         }
 
     async def async_set_temperature(self, **kwargs: Any) -> None:
+        """Set the target temperature."""
         temp = int(kwargs.get(ATTR_TEMPERATURE, 0))
         unit = self.coordinator.data.get(self._addr, {})
         run_mode = int(unit.get("run_mode", "0"))
@@ -160,6 +168,7 @@ class GA014sClimateEntity(CoordinatorEntity[GA014sCoordinator], ClimateEntity):
         await self.coordinator.async_request_refresh()
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
+        """Set the HVAC mode."""
         run_mode = HVAC_MODE_REVERSE.get(hvac_mode.value, 0)
         unit = self.coordinator.data.get(self._addr, {})
         extflag = self._calc_extflag(unit)
@@ -176,6 +185,7 @@ class GA014sClimateEntity(CoordinatorEntity[GA014sCoordinator], ClimateEntity):
         await self.coordinator.async_request_refresh()
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
+        """Set the fan mode."""
         unit = self.coordinator.data.get(self._addr, {})
         run_mode = int(unit.get("run_mode", "0"))
         extflag = self._calc_extflag(unit)
@@ -196,6 +206,7 @@ class GA014sClimateEntity(CoordinatorEntity[GA014sCoordinator], ClimateEntity):
         await self.coordinator.async_request_refresh()
 
     async def async_set_swing_mode(self, swing_mode: str) -> None:
+        """Set the swing mode."""
         unit = self.coordinator.data.get(self._addr, {})
         run_mode = int(unit.get("run_mode", "0"))
         extflag = self._calc_extflag(unit)
@@ -216,6 +227,7 @@ class GA014sClimateEntity(CoordinatorEntity[GA014sCoordinator], ClimateEntity):
         await self.coordinator.async_request_refresh()
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
+        """Set the preset mode (aux heat)."""
         unit = self.coordinator.data.get(self._addr, {})
         run_mode = int(unit.get("run_mode", "0"))
         extflag = self._calc_extflag(unit)
@@ -236,6 +248,7 @@ class GA014sClimateEntity(CoordinatorEntity[GA014sCoordinator], ClimateEntity):
         await self.coordinator.async_request_refresh()
 
     async def async_turn_on(self) -> None:
+        """Turn the AC on."""
         unit = self.coordinator.data.get(self._addr, {})
         room = float(unit.get("room_temp", "25"))
         cool = int(unit.get("cool_temp_set", "26"))
@@ -255,6 +268,7 @@ class GA014sClimateEntity(CoordinatorEntity[GA014sCoordinator], ClimateEntity):
         await self.coordinator.async_request_refresh()
 
     async def async_turn_off(self) -> None:
+        """Turn the AC off."""
         unit = self.coordinator.data.get(self._addr, {})
         extflag = self._calc_extflag(unit)
         cool = int(unit.get("cool_temp_set", "26"))
@@ -270,6 +284,7 @@ class GA014sClimateEntity(CoordinatorEntity[GA014sCoordinator], ClimateEntity):
         await self.coordinator.async_request_refresh()
 
     def _calc_extflag(self, unit: dict[str, Any]) -> int:
+        """Calculate extflag bitmask from current aux heat and swing state."""
         extflag = 0
         if int(unit.get("is_elec_heat", "0")) > 0:
             extflag |= 2

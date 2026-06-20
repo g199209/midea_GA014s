@@ -1,3 +1,4 @@
+"""Config flow for the GA014s integration."""
 from __future__ import annotations
 
 import voluptuous as vol
@@ -11,11 +12,14 @@ from .const import DOMAIN
 
 
 class GA014sFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
+    """Config flow for GA014s gateway."""
+
     VERSION = 1
 
     async def async_step_user(
         self, user_input: dict | None = None
     ) -> config_entries.FlowResult:
+        """Handle the initial step."""
         _errors: dict[str, str] = {}
         if user_input is not None:
             try:
@@ -39,5 +43,6 @@ class GA014sFlowHandler(config_entries.ConfigFlow, domain=DOMAIN):
         )
 
     async def _test_connection(self, host: str) -> None:
+        """Test connection to the gateway."""
         client = GA014sApiClient(host=host, session=async_create_clientsession(self.hass))
         await client.get_gateway_info()

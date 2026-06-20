@@ -1,3 +1,4 @@
+"""The Midea GA014s Gateway integration."""
 from __future__ import annotations
 
 from homeassistant.config_entries import ConfigEntry
@@ -13,6 +14,7 @@ PLATFORMS: list[Platform] = [Platform.CLIMATE]
 
 
 async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Set up GA014s from a config entry."""
     hass.data.setdefault(DOMAIN, {})
     client = GA014sApiClient(
         host=entry.data[CONF_HOST],
@@ -28,11 +30,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
 
 async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
+    """Unload a config entry."""
     if unloaded := await hass.config_entries.async_unload_platforms(entry, PLATFORMS):
         hass.data[DOMAIN].pop(entry.entry_id)
     return unloaded
 
 
 async def async_reload_entry(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Reload a config entry."""
     await async_unload_entry(hass, entry)
     await async_setup_entry(hass, entry)

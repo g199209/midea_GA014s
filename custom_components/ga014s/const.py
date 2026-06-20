@@ -1,3 +1,4 @@
+"""Constants for the GA014s integration."""
 from __future__ import annotations
 
 import logging
