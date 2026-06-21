@@ -9,6 +9,7 @@ from homeassistant.config_entries import ConfigEntry
 from homeassistant.const import ATTR_TEMPERATURE, UnitOfTemperature
 from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
+from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import (
@@ -28,6 +29,16 @@ from .const import (
 from .coordinator import GA014sCoordinator
 
 _LOGGER = logging.getLogger(f"custom_components.{DOMAIN}")
+
+# After a command we show the commanded state immediately and keep showing it
+# until a poll reads it back confirmed, so the UI never waits for the slow
+# 485-bus / indoor-unit readback. The gateway can take well over 10s to reflect
+# a change, so we confirm by value (not a fixed time window) to avoid flicker.
+# OPTIMISTIC_TIMEOUT bounds how long we trust an unconfirmed command before
+# falling back to the real state (covers commands the device rejects outright).
+OPTIMISTIC_TIMEOUT = 45.0
+# Delay before the first confirm poll, giving the device a head start to settle.
+OPTIMISTIC_CONFIRM_DELAY = 4.0
 
 
 async def async_setup_entry(
@@ -66,6 +77,9 @@ class GA014sClimateEntity(CoordinatorEntity[GA014sCoordinator], ClimateEntity):
         """Initialize the climate entity."""
         super().__init__(coordinator)
         self._addr = addr
+        self._optimistic: dict[str, str] = {}
+        self._optimistic_deadline = 0.0
+        self._confirm_unsub: Any = None
         self._attr_unique_id = f"{coordinator.config_entry.entry_id}_{addr}"
         unit = coordinator.data.get(addr, {})
         self._attr_name = unit.get("name", f"AC {addr}")
@@ -136,8 +150,57 @@ class GA014sClimateEntity(CoordinatorEntity[GA014sCoordinator], ClimateEntity):
         unit = self.coordinator.data.get(self._addr)
         if unit is None:
             return
+        # While a command is pending, keep showing the commanded state until the
+        # gateway reads it back confirmed. A poll that still reports the old
+        # value (device not yet settled) must not revert the UI, otherwise it
+        # flickers e.g. off -> on -> off -> on. We give up only once the values
+        # match (device caught up) or the timeout elapses (command rejected).
+        if self._optimistic:
+            confirmed = all(
+                str(unit.get(key)) == val for key, val in self._optimistic.items()
+            )
+            if confirmed or self.hass.loop.time() >= self._optimistic_deadline:
+                self._optimistic = {}
+            else:
+                return
         self._update_from_data(unit)
         self.async_write_ha_state()
+
+    def _set_optimistic(self, **changes: Any) -> None:
+        """Reflect commanded values in the UI immediately, then confirm later.
+
+        Writes the commanded fields into the cached unit data and pushes the
+        state right away so the card reacts instantly, instead of waiting for
+        the slow gateway readback. The commanded fields are remembered so that
+        subsequent polls keep showing them until the device confirms the change
+        (see _handle_coordinator_update); a confirm poll is scheduled to pull
+        the real state without waiting for the regular interval.
+        """
+        changes = {key: str(val) for key, val in changes.items()}
+        unit = dict(self.coordinator.data.get(self._addr, {}))
+        unit.update(changes)
+        self.coordinator.data[self._addr] = unit
+        self._optimistic = changes
+        self._optimistic_deadline = self.hass.loop.time() + OPTIMISTIC_TIMEOUT
+        self._update_from_data(unit)
+        self.async_write_ha_state()
+
+        if self._confirm_unsub is not None:
+            self._confirm_unsub()
+        self._confirm_unsub = async_call_later(
+            self.hass, OPTIMISTIC_CONFIRM_DELAY, self._async_confirm_refresh
+        )
+
+    async def _async_confirm_refresh(self, _now: Any) -> None:
+        """Poll the gateway to confirm a pending command's real state."""
+        self._confirm_unsub = None
+        await self.coordinator.async_request_refresh()
+
+    async def async_will_remove_from_hass(self) -> None:
+        """Cancel any pending confirm refresh."""
+        if self._confirm_unsub is not None:
+            self._confirm_unsub()
+            self._confirm_unsub = None
 
     @property
     def extra_state_attributes(self) -> dict[str, Any]:
@@ -165,7 +228,12 @@ class GA014sClimateEntity(CoordinatorEntity[GA014sCoordinator], ClimateEntity):
             heating_temp=temp,
             extflag=extflag,
         )
-        await self.coordinator.async_request_refresh()
+        # The gateway only echoes the temp field for the active mode; confirm on
+        # that one so the optimistic state resolves cleanly.
+        if run_mode == 3:
+            self._set_optimistic(heat_temp_set=temp)
+        else:
+            self._set_optimistic(cool_temp_set=temp)
 
     async def async_set_hvac_mode(self, hvac_mode: HVACMode) -> None:
         """Set the HVAC mode."""
@@ -182,7 +250,7 @@ class GA014sClimateEntity(CoordinatorEntity[GA014sCoordinator], ClimateEntity):
             heating_temp=heat,
             extflag=extflag,
         )
-        await self.coordinator.async_request_refresh()
+        self._set_optimistic(run_mode=run_mode)
 
     async def async_set_fan_mode(self, fan_mode: str) -> None:
         """Set the fan mode."""
@@ -203,7 +271,12 @@ class GA014sClimateEntity(CoordinatorEntity[GA014sCoordinator], ClimateEntity):
             heating_temp=heat,
             extflag=extflag,
         )
-        await self.coordinator.async_request_refresh()
+        # In auto the gateway reports is_auto_fan and a device-chosen fan_speed,
+        # so confirm only the flag; otherwise confirm the exact speed.
+        if fan_mode == "auto":
+            self._set_optimistic(is_auto_fan=1)
+        else:
+            self._set_optimistic(is_auto_fan=0, fan_speed=fan_speed)
 
     async def async_set_swing_mode(self, swing_mode: str) -> None:
         """Set the swing mode."""
@@ -224,7 +297,7 @@ class GA014sClimateEntity(CoordinatorEntity[GA014sCoordinator], ClimateEntity):
             heating_temp=heat,
             extflag=extflag,
         )
-        await self.coordinator.async_request_refresh()
+        self._set_optimistic(is_swing=1 if swing_mode == "on" else 0)
 
     async def async_set_preset_mode(self, preset_mode: str) -> None:
         """Set the preset mode (aux heat)."""
@@ -245,7 +318,7 @@ class GA014sClimateEntity(CoordinatorEntity[GA014sCoordinator], ClimateEntity):
             heating_temp=heat,
             extflag=extflag,
         )
-        await self.coordinator.async_request_refresh()
+        self._set_optimistic(is_elec_heat=1 if preset_mode == PRESET_AUX_HEAT else 0)
 
     async def async_turn_on(self) -> None:
         """Turn the AC on."""
@@ -265,7 +338,9 @@ class GA014sClimateEntity(CoordinatorEntity[GA014sCoordinator], ClimateEntity):
             heating_temp=int(unit.get("heat_temp_set", "26")),
             extflag=extflag,
         )
-        await self.coordinator.async_request_refresh()
+        # Confirm on run_mode; the device picks the fan speed, which the next
+        # poll fills in.
+        self._set_optimistic(run_mode=run_mode)
 
     async def async_turn_off(self) -> None:
         """Turn the AC off."""
@@ -281,7 +356,7 @@ class GA014sClimateEntity(CoordinatorEntity[GA014sCoordinator], ClimateEntity):
             heating_temp=heat,
             extflag=extflag,
         )
-        await self.coordinator.async_request_refresh()
+        self._set_optimistic(run_mode=0)
 
     def _calc_extflag(self, unit: dict[str, Any]) -> int:
         """Calculate extflag bitmask from current aux heat and swing state."""

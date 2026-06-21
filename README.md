@@ -11,6 +11,13 @@ The GA014s is a 485-bus gateway that exposes Midea MDV central AC units over a l
 - **Full climate control** — HVAC mode (off/fan/cool/heat/auto/dry), target temperature, fan speed (7 levels + auto), swing mode, electric auxiliary heat (preset)
 - **Per-device capability detection** — auto mode is only offered if the indoor unit supports it
 - **HVAC action inference** — shows `cooling`/`heating`/`idle` based on current vs target temperature
+- **Instant UI feedback** — commands are reflected in the card immediately instead of waiting for the slow gateway readback (see below)
+
+## Responsive UI (optimistic updates)
+
+The GA014s is a polling gateway: state is read back over a 485 bus, and a change you make (power, mode, temperature…) can take well over ten seconds to show up in a fresh read. Without help, the card keeps showing the old state for those seconds after you tap a control.
+
+To avoid this, the integration applies the commanded value to the entity **optimistically** the moment you send a command, so the card reacts instantly. It then keeps showing that value until a poll reads it back **confirmed** — so the UI never flickers back to the old state while the gateway catches up. If a command is not confirmed within a timeout (e.g. the unit rejects it), the entity falls back to the real reported state.
 
 ## Installation
 
