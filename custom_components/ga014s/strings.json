@@ -15,5 +15,16 @@
     "abort": {
       "already_configured": "This gateway is already configured."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "GA014s Options",
+        "description": "Select which months count as winter. Turning a unit on during these months starts heating; otherwise it starts cooling.",
+        "data": {
+          "winter_months": "Winter months"
+        }
+      }
+    }
   }
 }

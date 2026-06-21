@@ -11,8 +11,11 @@ from homeassistant.core import HomeAssistant, callback
 from homeassistant.helpers.entity_platform import AddEntitiesCallback
 from homeassistant.helpers.event import async_call_later
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
+from homeassistant.util import dt as dt_util
 
 from .const import (
+    CONF_WINTER_MONTHS,
+    DEFAULT_WINTER_MONTHS,
     DOMAIN,
     FAN_MODE_MAP,
     FAN_MODE_REVERSE,
@@ -321,26 +324,33 @@ class GA014sClimateEntity(CoordinatorEntity[GA014sCoordinator], ClimateEntity):
         self._set_optimistic(is_elec_heat=1 if preset_mode == PRESET_AUX_HEAT else 0)
 
     async def async_turn_on(self) -> None:
-        """Turn the AC on."""
+        """Turn the AC on in the seasonal mode.
+
+        Heat during the configured winter months, cool otherwise. This follows
+        the central system's seasonal master mode; a blind heat/cool guess can
+        request the wrong mode and put the indoor unit into a conflict fault.
+        """
         unit = self.coordinator.data.get(self._addr, {})
-        room = float(unit.get("room_temp", "25"))
-        cool = int(unit.get("cool_temp_set", "26"))
-        if room >= cool:
-            run_mode = 2
-        else:
-            run_mode = 3
+        run_mode = 3 if self._is_winter() else 2
         extflag = self._calc_extflag(unit)
         await self.coordinator._client.set_ac(
             addr=self._addr,
             run_mode=run_mode,
             fan_speed=int(unit.get("fan_speed", "0")) or 3,
-            cooling_temp=cool,
+            cooling_temp=int(unit.get("cool_temp_set", "26")),
             heating_temp=int(unit.get("heat_temp_set", "26")),
             extflag=extflag,
         )
         # Confirm on run_mode; the device picks the fan speed, which the next
         # poll fills in.
         self._set_optimistic(run_mode=run_mode)
+
+    def _is_winter(self) -> bool:
+        """Return whether the current month is configured as a winter month."""
+        winter = self.coordinator.config_entry.options.get(
+            CONF_WINTER_MONTHS, DEFAULT_WINTER_MONTHS
+        )
+        return dt_util.now().month in {int(m) for m in winter}
 
     async def async_turn_off(self) -> None:
         """Turn the AC off."""
